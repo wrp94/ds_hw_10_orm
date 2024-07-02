@@ -11,6 +11,9 @@ from sqlalchemy import create_engine, func
 # datetime
 import datetime as dt
 
+# Numpy
+import numpy as np
+
 #################################################
 # Database Setup
 #################################################
@@ -44,6 +47,7 @@ app = Flask(__name__)
 @app.route("/")
 def welcome():
     """List all available api routes."""
+
     return """Available Routes:<br/>
         /api/v1.0/precipitation<br/>
         /api/v1.0/stations<br/>
@@ -64,10 +68,9 @@ def precipitation():
 
     # Create a dictionary from the row data and append to a list of
     # all_precipitation
-    all_precipitation = []
-    for date, prcp in results:
-        all_precipitation.append({date: prcp})
+    all_precipitation = {date: prcp for date, prcp in results}
 
+    session.close()
     return jsonify(all_precipitation)
 
 
@@ -75,8 +78,13 @@ def precipitation():
 @app.route("/api/v1.0/stations")
 def stations():
     """Return all of the station names"""
+
     results = session.query(Station.station).all()
-    return jsonify([station[0] for station in results])
+
+    session.close()
+
+    stations = list(np.ravel(results))
+    return jsonify(stations=stations)
 
 
 # Temperatures route
@@ -84,13 +92,8 @@ def stations():
 def tobs():
     """Return a list of min, max, and avg temps for the most active station"""
 
-    # Find the most active station
-    most_active_id = session.query(Measurement.station).\
-        group_by(Measurement.station).\
-        order_by(func.count(Measurement.tobs).desc()).\
-        first()
-
-    most_active_id = most_active_id[0]
+    # Get the most active station
+    most_active_id = get_most_active_station()
 
     # Query the last 12 months of temperature observation data for the most
     # active station
@@ -99,25 +102,29 @@ def tobs():
         filter(Measurement.station == most_active_id).\
         all()
 
-    # Save the query results as a list of dictionaries
-    temps = [{"station": most_active_id},
-             {"min_temp": results[1],
-              "max_temp": results[2],
-              "avg_temp": results[3]}]
+    session.close()
 
-    return jsonify(temps)
+    # Save the query results as a list
+    temps = list(np.ravel(results))
+
+    return jsonify(temps=temps)
 
 
 # Start date route
 @app.route("/api/v1.0/<start>")
 def start_date_only(start):
     """Return a list of min, max, and avg temps for a given start date"""
+
+    # Query the min, max, and avg temps for a given start date
     results = session.query(func.min(Measurement.tobs),
                             func.max(Measurement.tobs),
                             func.avg(Measurement.tobs)).\
         filter(Measurement.date >= start).\
         first()
 
+    session.close()
+
+    # Save the query results as a list of dictionaries
     temps = [{"start_date": start,
               "end_date": get_last_date().strftime("%Y-%m-%d")},
              {"min_temp": results[0],
@@ -131,12 +138,15 @@ def start_date_only(start):
 @app.route("/api/v1.0/<start>/<end>")
 def date_range(start, end):
     """Return a list of min, max, and avg temps for a given date range"""
+
     results = session.query(func.min(Measurement.tobs),
                             func.max(Measurement.tobs),
                             func.avg(Measurement.tobs)).\
         filter(Measurement.date >= start).\
         filter(Measurement.date <= end).\
         first()
+
+    session.close()
 
     temps = [{"start_date": start,
               "end_date": end},
@@ -147,11 +157,15 @@ def date_range(start, end):
     return jsonify(temps)
 
 
+#################################################
 # Helper functions
+#################################################
+
 
 # Get last date in database
 def get_last_date():
     """Return the last date in the database"""
+
     # set up dates based on database
     last_date = session.query(Measurement.date).\
         order_by(Measurement.date.desc()).\
@@ -161,12 +175,27 @@ def get_last_date():
     return last_date
 
 
+# Get one year prior to last date
 def get_one_year_prior():
     """Return the date one year prior to the last date in the database"""
+
     last_date = get_last_date()
     one_year_prior = last_date - dt.timedelta(days=365)
 
     return one_year_prior
+
+
+def get_most_active_station():
+    """Return the most active station"""
+
+    most_active_id = session.query(Measurement.station).\
+        group_by(Measurement.station).\
+        order_by(func.count(Measurement.tobs).desc()).\
+        first()
+
+    most_active_id = most_active_id[0]
+
+    return most_active_id
 
 
 # Run the app
