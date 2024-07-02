@@ -79,11 +79,14 @@ def precipitation():
 def stations():
     """Return all of the station names"""
 
+    # Query all of the stations
     results = session.query(Station.station).all()
 
     session.close()
 
+    # Save the query results as a list
     stations = list(np.ravel(results))
+
     return jsonify(stations=stations)
 
 
@@ -139,6 +142,7 @@ def start_date_only(start):
 def date_range(start, end):
     """Return a list of min, max, and avg temps for a given date range"""
 
+    # Query the min, max, and avg temps for a given date range
     results = session.query(func.min(Measurement.tobs),
                             func.max(Measurement.tobs),
                             func.avg(Measurement.tobs)).\
@@ -148,6 +152,7 @@ def date_range(start, end):
 
     session.close()
 
+    # Save the query results as a list of dictionaries
     temps = [{"start_date": start,
               "end_date": end},
              {"min_temp": results[0],
@@ -185,6 +190,7 @@ def get_one_year_prior():
     return one_year_prior
 
 
+# Get most active station
 def get_most_active_station():
     """Return the most active station"""
 
